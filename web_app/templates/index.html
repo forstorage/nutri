@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AI Nutrition Analysis</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>AI Nutrition Analysis</h1>
+      <p>Upload a photo of your meal and our AI will analyze its nutritional content, providing personalized insights and suggestions.</p>
+    </header>
+
+    <section class="steps">
+      <!-- Step 1 -->
+      <div class="step">
+        <div class="step-number">1</div>
+        <div class="step-icon"><i class="fas fa-camera"></i></div>
+        <h2>Capture Your Meal</h2>
+        <p>Take a photo of your plate or upload an existing image from your gallery.</p>
+        <div style="display: flex; justify-content: center; gap: 12px;">
+          <button class="btn-orange" id="take-photo-btn"><i class="fas fa-camera"></i> Take Photo</button>
+          <label class="btn-green" style="cursor: pointer;">
+            <i class="fas fa-upload"></i> Upload
+            <input type="file" id="upload-input" style="display: none;" accept="image/*" />
+          </label>
+        </div>
+      </div>
+
+      <!-- Step 2 -->
+      <div class="step">
+        <div class="step-number">2</div>
+        <svg class="loader" viewBox="0 0 64 64">
+          <circle cx="32" cy="32" r="28" stroke="#2a4a3f" stroke-width="4" fill="none" stroke-dasharray="176" stroke-dashoffset="176">
+            <animate attributeName="stroke-dashoffset" values="176;0" dur="2s" repeatCount="indefinite" />
+          </circle>
+        </svg>
+        <h2>AI Analysis</h2>
+        <p>Our AI identifies your dish, ingredients, and calculates its complete nutritional profile.</p>
+        <div id="nutrition-values" style="display: flex; justify-content: space-between; font-size: 14px; width: 100%; max-width: 260px; margin: auto;">
+          <div><strong>Proteins</strong><br><span style="color: var(--primary); font-weight: bold;">Analyzing</span></div>
+          <div><strong>Carbs</strong><br><span style="color: var(--primary); font-weight: bold;">Analyzing</span></div>
+          <div><strong>Fats</strong><br><span style="color: var(--primary); font-weight: bold;">Analyzing</span></div>
+        </div>
+      </div>
+
+      <!-- Step 3 -->
+      <div class="step">
+        <div class="step-number">3</div>
+        <img src="https://storage.googleapis.com/a1aa/image/4247da51-cc67-436a-97f8-ee6ad404140b.jpg" class="meal-image" alt="Meal Plate">
+        <h2>Personalized Insights</h2>
+        <p>Receive culturally relevant suggestions to enhance your meal's nutritional value.</p>
+        <button class="btn-green">See Example Analysis</button>
+      </div>
+    </section>
+
+    <section class="analysis-section" id="results" style="display: none;">
+      <div id="analysis-header" style="font-weight: bold; font-size: 20px; margin-bottom: 24px;"></div>
+      <div class="analysis-columns">
+        <!-- Left Column -->
+        <div>
+          <div style="font-size: 16px; margin-bottom: 10px;">
+            <strong>AI Confidence:</strong>
+            <span id="confidence-value" style="background: #f3f4f6; color: var(--primary); padding: 4px 10px; border-radius: 6px;"></span>
+          </div>
+
+          <div><strong>Nutritional Spectrum:</strong></div>
+          <div id="nutrition-bars"></div>
+
+          <div class="nutrition-card" id="assessment">
+            <strong>Overall Assessment:</strong>
+            <p id="assessment-text"></p>
+          </div>
+        </div>
+
+        <!-- Right Column -->
+        <div class="ingredients" id="ingredients-section">
+          <strong>Ingredient Breakdown:</strong>
+          <ul id="ingredients-list"></ul>
+          <div class="cultural-card" id="cultural-context">
+            <strong>Cultural Context:</strong>
+            <p id="cultural-text"></p>
+          </div>
+          <button class="btn-green btn-full">Save to My Meals</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+<script>
+    document.getElementById('upload-input').addEventListener('change', (event) => {
+        const file = event.target.files[0];
+        if (file) handleImageUpload(file);
+    });
+
+    async function handleImageUpload(file) {
+        const formData = new FormData();
+        formData.append('image', file);
+
+        try {
+            // Show loading state
+            document.querySelector('.analysis-section').style.display = 'none';
+            document.getElementById('nutrition-values').innerHTML = `
+                <div><strong>Proteins</strong><br><span style="color: var(--primary); font-weight: bold;">Analyzing...</span></div>
+                <div><strong>Carbs</strong><br><span style="color: var(--primary); font-weight: bold;">Analyzing...</span></div>
+                <div><strong>Fats</strong><br><span style="color: var(--primary); font-weight: bold;">Analyzing...</span></div>
+            `;
+
+            // Get prediction
+            const predictionResponse = await fetch('/predict', { method: 'POST', body: formData });
+            const predictionData = await predictionResponse.json();
+            if (!predictionData.food) throw new Error('Failed to detect food');
+            
+            // Update basic info
+            document.getElementById('analysis-header').textContent = `Analysis: ${predictionData.food}`;
+            document.getElementById('confidence-value').textContent = `${predictionData.confidence}%`;
+
+            // Get detailed info
+            const infoResponse = await fetch('/get-food-info', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ foodName: predictionData.food })
+            });
+            
+            if (!infoResponse.ok) throw new Error('Failed to get food info');
+            const infoData = await infoResponse.json();
+            
+            if (infoData.error) throw new Error(infoData.error);
+            if (!infoData.result) throw new Error('Empty response from server');
+
+            // Update nutrition values
+            const nutrition = infoData.nutrition || {};
+            document.getElementById('nutrition-values').innerHTML = `
+                <div><strong>Proteins</strong><br><span style="color: var(--primary); font-weight: bold;">${nutrition.protein || 'N/A'}</span></div>
+                <div><strong>Carbs</strong><br><span style="color: var(--primary); font-weight: bold;">${nutrition.carbs || 'N/A'}</span></div>
+                <div><strong>Fats</strong><br><span style="color: var(--primary); font-weight: bold;">${nutrition.fats || 'N/A'}</span></div>
+            `;
+
+            // Update ingredients
+            const ingredients = infoData.ingredients || [];
+            if (ingredients.length > 0) {
+                updateIngredients(ingredients);
+            } else {
+                document.getElementById('ingredients-list').innerHTML = '<li>No ingredients information available</li>';
+            }
+
+            // Update health assessment
+            updateHealthAssessment(
+                infoData.healthiness || 'No health assessment available',
+                infoData.suggestion || 'No specific suggestions available'
+            );
+
+            // Show results section
+            document.querySelector('.analysis-section').style.display = 'block';
+
+        } catch (error) {
+            console.error('Error:', error);
+            document.getElementById('nutrition-values').innerHTML = `
+                <div><strong>Proteins</strong><br><span style="color: var(--primary); font-weight: bold;">Error</span></div>
+                <div><strong>Carbs</strong><br><span style="color: var(--primary); font-weight: bold;">Error</span></div>
+                <div><strong>Fats</strong><br><span style="color: var(--primary); font-weight: bold;">Error</span></div>
+            `;
+            document.getElementById('ingredients-list').innerHTML = `
+                <li class="error-message">${error.message}</li>`;
+        }
+    }
+
+    function updateIngredients(ingredients) {
+        const list = document.getElementById('ingredients-list');
+        list.innerHTML = ingredients.map(ingredient => {
+            const rating = ingredient.rating || 3;
+            const stars = Array(5).fill().map((_, index) => 
+                `<i class="fas ${index < rating ? 'fa-star' : 'fa-star-o'}"></i>`
+            ).join('');
+
+            let ratingClass = 'good-rating';
+            if (rating <= 2) ratingClass = 'bad-rating';
+            else if (rating <= 3) ratingClass = 'okay-rating';
+
+            return `
+                <li>
+                    <span>${ingredient.name}</span>
+                    <span class="ingredient-rating ${ratingClass}" title="${rating}/5 Health Rating">
+                        ${stars}
+                    </span>
+                </li>
+            `;
+        }).join('');
+    }
+
+    function updateHealthAssessment(healthiness, suggestion) {
+        const healthElement = document.getElementById('healthiness-text');
+        const suggestionElement = document.getElementById('suggestion-text');
+        const suggestionBox = document.getElementById('suggestion-box');
+
+        // Clean and format text
+        healthElement.innerHTML = healthiness
+            .replace(/[*_]/g, '')
+            .replace(/^(is this food healthy\??)/i, '')
+            .trim();
+
+        // Format suggestion
+        if (suggestion.toLowerCase().includes('no suggestion')) {
+            suggestionBox.style.display = 'none';
+        } else {
+            suggestionBox.style.display = 'block';
+            suggestionElement.innerHTML = suggestion
+                .replace(/(\d+\.|•|-)\s*/g, '<br>• ')
+                .replace(/\n/g, '<br>')
+                .replace(/•/g, '<span class="bullet">•</span>');
+        }
+    }
+
+    // Initialize example analysis bars
+    updateAnalysisBars();
+</script>
+</body>
+</html>
